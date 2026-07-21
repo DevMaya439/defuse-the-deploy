@@ -640,21 +640,46 @@
   "use strict";
 
   // ---------- Persistence ----------
-  const LB_KEY = "defuse_the_deploy_leaderboard_v1";
-  function getLeaderboard() {
-    try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; }
-    catch (e) { return []; }
+  // Scores submit to a shared Supabase table (insert-only for players — nobody but the
+  // project owner can read it back). Locally we only keep each player's OWN personal best,
+  // purely so they have something to see; it never reflects anyone else's scores.
+  // These placeholders are substituted at deploy time by the GitHub Actions workflow
+  // (.github/workflows/deploy.yml) from repo secrets — kept out of the committed source.
+  // Note: the Supabase anon key is designed to be public-facing (RLS enforces the real
+  // access control), so this isn't a security boundary — it just keeps the repo's diff clean.
+  const SUPABASE_URL = "__SUPABASE_URL__";
+  const SUPABASE_ANON_KEY = "__SUPABASE_ANON_KEY__";
+  const PB_KEY = "defuse_the_deploy_personal_best_v1";
+
+  function getPersonalBest() {
+    try { return JSON.parse(localStorage.getItem(PB_KEY)) || null; }
+    catch (e) { return null; }
   }
-  function saveLeaderboard(list) {
-    localStorage.setItem(LB_KEY, JSON.stringify(list));
+  function savePersonalBest(entry) {
+    localStorage.setItem(PB_KEY, JSON.stringify(entry));
   }
-  function submitScore(name, score) {
-    const list = getLeaderboard();
-    list.push({ name: name || "anon", score, date: new Date().toISOString().slice(0,10) });
-    list.sort((a, b) => b.score - a.score);
-    const top = list.slice(0, 3);
-    saveLeaderboard(top);
-    return top;
+
+  async function submitScore(name, score) {
+    const entry = { name: name || "anon", score, date: new Date().toISOString().slice(0, 10) };
+
+    // update local personal-best regardless of network result
+    const prevBest = getPersonalBest();
+    if (!prevBest || score > prevBest.score) savePersonalBest(entry);
+
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/scores`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ name: entry.name, score: entry.score })
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false };
+    }
   }
 
   // ---------- Game constants ----------
@@ -1287,12 +1312,11 @@
         </div>
         <button id="start-btn">Start Incident</button>
         <div>
-          <button id="lb-btn" class="secondary" style="margin-top:10px;">View Leaderboard</button>
           <button id="howto-btn" class="secondary" style="margin-top:10px;">How to Play</button>
         </div>
       </div>
       <div id="howto-panel" class="panel howto-panel hidden">${renderHowTo()}</div>
-      ${renderLeaderboardBlock(null)}
+      ${renderPersonalBestBlock()}
     `;
   }
 
@@ -1725,20 +1749,20 @@
     return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   }
 
-  function renderLeaderboardBlock(highlightScore) {
-    const list = getLeaderboard();
-    if (!list.length) {
-      return `<div class="panel leaderboard"><h3>Top 3 Incident Commanders</h3><div class="lb-empty">No scores yet. Be the first to defuse it.</div></div>`;
+  // Personal-best only — there is no shared leaderboard players can see. Scores go into a
+  // private Supabase table the game itself cannot read back.
+  function renderPersonalBestBlock() {
+    const best = getPersonalBest();
+    if (!best) {
+      return `<div class="panel leaderboard"><h3>Your Best Run</h3><div class="lb-empty">No runs yet. Defuse your first deploy to set a personal best.</div></div>`;
     }
     return `
       <div class="panel leaderboard">
-        <h3>Top 3 Incident Commanders</h3>
-        ${list.map((e, i) => `
-          <div class="lb-row ${highlightScore != null && e.score === highlightScore ? "you" : ""}">
-            <span><span class="rank">#${i + 1}</span>${escapeHtml(e.name)}</span>
-            <span>${e.score} pts &middot; ${e.date}</span>
-          </div>
-        `).join("")}
+        <h3>Your Best Run</h3>
+        <div class="lb-row">
+          <span>${escapeHtml(best.name)}</span>
+          <span>${best.score} pts &middot; ${best.date}</span>
+        </div>
       </div>
     `;
   }
@@ -1882,12 +1906,6 @@
     const startBtn = document.getElementById("start-btn");
     if (startBtn) startBtn.onclick = startGame;
 
-    const lbBtn = document.getElementById("lb-btn");
-    if (lbBtn) lbBtn.onclick = () => {
-      const panel = document.querySelectorAll(".panel.leaderboard")[0];
-      if (panel) panel.scrollIntoView({ behavior: "smooth" });
-    };
-
     const howtoBtn = document.getElementById("howto-btn");
     const howtoPanel = document.getElementById("howto-panel");
     if (howtoBtn && howtoPanel) {
@@ -1903,14 +1921,16 @@
     if (restartBtn) restartBtn.onclick = startGame;
 
     const submitScoreBtn = document.getElementById("submit-score-btn");
-    if (submitScoreBtn) submitScoreBtn.onclick = () => {
+    if (submitScoreBtn) submitScoreBtn.onclick = async () => {
       const nameIn = document.getElementById("name-in");
       const name = (nameIn.value || "anon").trim().slice(0, 20);
       const score = computeScore();
-      submitScore(name, score);
       submitScoreBtn.disabled = true;
-      submitScoreBtn.textContent = "Submitted";
-      document.getElementById("lb-slot").innerHTML = renderLeaderboardBlock(score);
+      submitScoreBtn.textContent = "Submitting...";
+      const result = await submitScore(name, score);
+      submitScoreBtn.textContent = result.ok ? "Submitted" : "Saved locally";
+      const slot = document.getElementById("lb-slot");
+      if (slot) slot.innerHTML = renderPersonalBestBlock();
     };
 
     if (state.screen !== "playing" || !state.current) return;
