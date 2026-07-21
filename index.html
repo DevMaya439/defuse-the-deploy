@@ -1,0 +1,1967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Defuse the Deploy</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --panel: #121826;
+    --panel-border: #1f2937;
+    --green: #22d97a;
+    --red: #ff4d4d;
+    --amber: #ffb84d;
+    --text: #d7e0ea;
+    --muted: #6b7688;
+    --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 50% 0%, #131b2c 0%, #05070c 80%);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #app { width: 100%; max-width: 920px; }
+  #app.with-runbook { max-width: 1180px; }
+
+  .play-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .play-layout { grid-template-columns: 1fr; } }
+
+  .bomb-id-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .bomb-id-bar .id-value {
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--panel-border);
+  }
+  .bomb-id-bar .id-value.env-prod {
+    color: var(--red);
+    background: rgba(255,77,77,0.1);
+    border-color: rgba(255,77,77,0.35);
+  }
+  .bomb-id-bar .id-value.env-staging {
+    color: var(--green);
+    background: rgba(34,217,122,0.1);
+    border-color: rgba(34,217,122,0.35);
+  }
+  .bomb-id-bar .key-tag {
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    background: #0d1420;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10.5px;
+    letter-spacing: 0.5px;
+  }
+
+  .runbook-panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 18px;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+  }
+  .runbook-panel h3 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--amber);
+  }
+  .runbook-section { margin-bottom: 18px; }
+  .runbook-section:last-child { margin-bottom: 0; }
+  .runbook-section p { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin: 4px 0 8px; }
+  table.runbook-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  table.runbook-table th, table.runbook-table td {
+    border: 1px solid var(--panel-border);
+    padding: 5px 7px;
+    text-align: left;
+  }
+  table.runbook-table th { color: var(--amber); background: #0d1420; font-size: 10px; }
+  table.runbook-table td.hl { color: var(--muted); }
+  table.runbook-table tr.runbook-row-hl td { background: rgba(34,217,122,0.06); }
+  table.runbook-table td.hl.active {
+    color: #05130a;
+    background: var(--green) !important;
+    font-weight: bold;
+  }
+
+  h1 {
+    text-align: center;
+    letter-spacing: 2px;
+    color: var(--green);
+    text-shadow: 0 0 12px rgba(34,217,122,0.5);
+    margin-bottom: 4px;
+  }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 24px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.4);
+  }
+
+  /* ---- Start screen ---- */
+  .start-panel { text-align: center; }
+  .start-panel p { color: var(--muted); line-height: 1.6; max-width: 600px; margin: 12px auto; }
+
+  .howto-panel { text-align: left; margin-top: 16px; }
+  .howto-panel.hidden { display: none; }
+  .howto-panel h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--amber);
+  }
+  .howto-intro { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin-bottom: 12px; }
+  .howto-list {
+    margin: 0 0 20px;
+    padding-left: 18px;
+    color: var(--text);
+    font-size: 12.5px;
+    line-height: 1.7;
+  }
+  .howto-list li { margin-bottom: 6px; }
+  .howto-list b { color: var(--amber); }
+  .hl-prod { color: var(--red); font-weight: bold; }
+  .hl-staging { color: var(--green); font-weight: bold; }
+  .howto-module { margin-bottom: 14px; }
+  .howto-module:last-child { margin-bottom: 0; }
+  .howto-module-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: var(--green);
+    margin-bottom: 3px;
+  }
+  .howto-module p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: none;
+  }
+  .howto-module code {
+    background: #0d1420;
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--green);
+  }
+
+  .start-panel.loading { display: flex; flex-direction: column; align-items: center; padding: 48px 24px; }
+  .start-panel.loading svg { display: block; }
+  .start-panel.loading polyline {
+    fill: none;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .start-panel.loading polyline#back { stroke: rgba(255,77,77,0.2); }
+  .start-panel.loading polyline#front {
+    stroke: var(--red);
+    stroke-dasharray: 48, 144;
+    stroke-dashoffset: 192;
+    animation: heartbeat-dash 1.4s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .start-panel.loading polyline#front { animation: none; stroke-dashoffset: 0; }
+  }
+  @keyframes heartbeat-dash {
+    72.5% { opacity: 0; }
+    to { stroke-dashoffset: 0; }
+  }
+  .start-panel.loading .dots span {
+    opacity: 0;
+    animation: dot-fade 1.2s infinite;
+  }
+  .start-panel.loading .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .start-panel.loading .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot-fade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+  .module-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 16px 0; }
+  .module-chip {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    border: 1px solid var(--panel-border);
+    padding: 4px 9px;
+    border-radius: 4px;
+  }
+  button {
+    font-family: var(--mono);
+    background: var(--green);
+    color: #05130a;
+    border: none;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: bold;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(34,217,122,0.35); }
+  button:active { transform: translateY(0); }
+  button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+  button.secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+  }
+  button.danger { background: var(--red); color: #2a0000; }
+
+  /* ---- HUD ---- */
+  .hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .timer {
+    font-size: 34px;
+    font-weight: bold;
+    color: var(--green);
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+  .timer.warn { color: var(--amber); }
+  .timer.crit { color: var(--red); animation: pulse 0.6s infinite; }
+  @media (prefers-reduced-motion: reduce) { .timer.crit { animation: none; } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .stat { font-size: 12px; color: var(--muted); }
+  .stat b { color: var(--text); }
+
+  .round-track { display: flex; gap: 4px; margin-bottom: 16px; }
+  .round-dot { flex: 1; height: 4px; border-radius: 2px; background: var(--panel-border); }
+  .round-dot.done { background: var(--green); }
+  .round-dot.current { background: var(--amber); }
+
+  .module-label {
+    display: inline-block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--amber);
+    background: rgba(255,184,77,0.1);
+    border: 1px solid rgba(255,184,77,0.3);
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+  }
+  .context-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(90deg, rgba(255,77,77,0.12), rgba(255,77,77,0.03));
+    border: 1px solid rgba(255,77,77,0.35);
+    border-left: 4px solid var(--red);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+  .prompt { color: var(--text); margin-bottom: 18px; line-height: 1.6; font-size: 14px; }
+  .prompt code {
+    background: #0d1420;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--green);
+  }
+
+  /* ---- Log lines (realistic multi-line) ---- */
+  .log-console {
+    background: #0a0f18;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .log-console-bar {
+    background: #0d1420;
+    padding: 7px 12px;
+    font-size: 10.5px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    justify-content: space-between;
+  }
+  .log-line {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #131c2b;
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 0;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: pre-wrap;
+    line-height: 1.55;
+  }
+  .log-line:last-child { border-bottom: none; }
+  .log-line:hover { background: #101a2a; }
+  .log-line .ts { color: #4a5568; margin-right: 8px; }
+  .log-line .svc { color: #6b8cff; margin-right: 6px; }
+  .log-line .rid { color: #4a5568; }
+  .log-line .tag-info { color: #6b8cff; font-weight: bold; }
+  .log-line .tag-warn { color: var(--amber); font-weight: bold; }
+  .log-line .tag-error { color: var(--red); font-weight: bold; }
+  .log-line .stack { display: block; color: #566173; padding-left: 18px; font-size: 11px; }
+
+  /* ---- Wires + Grafana-style panel ---- */
+  .graf-panel {
+    background: #0a0f18;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .graf-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #0d1420;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .graf-bar .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; }
+  .graf-legend { display: flex; gap: 14px; padding: 8px 12px; font-size: 10.5px; color: var(--muted); flex-wrap: wrap; }
+  .graf-legend .sw { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; }
+  .graf-hint { font-size: 11px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  canvas { display: block; width: 100%; }
+
+  .wire-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+  .wire {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #0d1420;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .wire:hover { border-color: var(--green); }
+  .wire .swatch { width: 34px; height: 10px; border-radius: 4px; flex-shrink: 0; }
+  .wire .meta { color: var(--muted); font-size: 11px; margin-left: auto; }
+  .wire-pos {
+    font-size: 10.5px;
+    color: var(--muted);
+    width: 16px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .canary-tag {
+    font-size: 9.5px;
+    letter-spacing: 0.5px;
+    color: var(--amber);
+    border: 1px solid rgba(255,184,77,0.4);
+    background: rgba(255,184,77,0.1);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ---- Console input (terminal chrome) ---- */
+  .terminal {
+    background: #0a0f18;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .terminal-bar {
+    background: #0d1420;
+    padding: 7px 12px;
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .terminal-bar span { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .terminal-bar .c1 { background: #ff5f56; }
+  .terminal-bar .c2 { background: #ffbd2e; }
+  .terminal-bar .c3 { background: #27c93f; }
+  .terminal-body { padding: 12px 14px; }
+  .prompt-line { color: var(--muted); font-size: 12.5px; margin-bottom: 8px; }
+  .prompt-line .user { color: var(--green); }
+  .prompt-line .path { color: #6b8cff; }
+  .console-input-row { display: flex; align-items: center; gap: 8px; }
+  .console-input-row .caret { color: var(--green); }
+  .console-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--green);
+    font-family: var(--mono);
+    font-size: 14px;
+    outline: none;
+  }
+  .console-row { display: flex; gap: 10px; margin-top: 12px; }
+  .console-row button { margin-top: 0; }
+  .feedback {
+    margin-top: 10px;
+    font-size: 12.5px;
+    min-height: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .feedback.ok,
+  .feedback.bad {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 3px solid;
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .feedback.ok {
+    color: var(--green);
+    background: rgba(34,217,122,0.08);
+    border-left-color: var(--green);
+  }
+  .feedback.bad {
+    color: var(--red);
+    background: rgba(255,77,77,0.08);
+    border-left-color: var(--red);
+  }
+  .feedback svg { flex-shrink: 0; width: 15px; height: 15px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .feedback.ok, .feedback.bad { animation: feedback-in 0.2s ease; }
+  }
+  @keyframes feedback-in { from { transform: translateY(-2px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+  /* ---- Grid choices (status lookup) ---- */
+  .grid-choices { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (max-width: 560px) { .grid-choices { grid-template-columns: 1fr; } }
+  .grid-choices button.choice {
+    background: #0d1420;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    text-align: left;
+    font-size: 13px;
+    padding: 12px 14px;
+  }
+  .grid-choices button.choice:hover { border-color: var(--green); box-shadow: none; }
+
+  table.lookup {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 16px;
+    font-size: 12.5px;
+  }
+  table.lookup th, table.lookup td {
+    border: 1px solid var(--panel-border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  table.lookup th { color: var(--amber); background: #0d1420; }
+
+  /* ---- Slack thread module ---- */
+  .slack-panel {
+    background: #0a0f18;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .slack-header {
+    background: #1a0d2e;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 12.5px;
+    color: #e8d5ff;
+  }
+  .slack-header .hash { color: #b48cff; margin-right: 4px; }
+  .slack-msg {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid #131c2b;
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--text);
+    font-family: var(--mono);
+  }
+  .slack-msg:last-child { border-bottom: none; }
+  .slack-msg:hover { background: #101a2a; }
+  .slack-avatar {
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: bold;
+    color: #05130a;
+  }
+  .slack-body { flex: 1; min-width: 0; }
+  .slack-meta { font-size: 11.5px; margin-bottom: 3px; }
+  .slack-meta .name { color: #e8d5ff; font-weight: bold; margin-right: 8px; }
+  .slack-meta .time { color: #4a5568; }
+  .slack-text { font-size: 12.5px; line-height: 1.5; color: var(--text); }
+  .slack-text .reaction {
+    display: inline-block;
+    background: #1a2436;
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 10.5px;
+    margin-top: 6px;
+    color: var(--muted);
+  }
+
+  /* ---- PagerDuty module ---- */
+  .roster-panel {
+    background: #0a0f18;
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .roster-title {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    width: 100%;
+  }
+  .roster-row { font-size: 12px; color: var(--text); }
+  .roster-row b { color: var(--amber); }
+  .pd-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .pd-card {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: 100%;
+    text-align: left;
+    background: #0d1420;
+    border: 1px solid var(--panel-border);
+    border-radius: 6px;
+    cursor: pointer;
+    overflow: hidden;
+    font-family: var(--mono);
+    color: var(--text);
+  }
+  .pd-card:hover { border-color: var(--green); }
+  .pd-sev { width: 5px; flex-shrink: 0; }
+  .pd-sev.sev1 { background: var(--red); }
+  .pd-sev.sev2 { background: var(--amber); }
+  .pd-sev.sev3 { background: #6b8cff; }
+  .pd-sev.sev4 { background: var(--muted); }
+  .pd-content { padding: 10px 14px; flex: 1; }
+  .pd-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .pd-sev-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: bold; }
+  .pd-sev-label.sev1 { color: var(--red); }
+  .pd-sev-label.sev2 { color: var(--amber); }
+  .pd-sev-label.sev3 { color: #6b8cff; }
+  .pd-sev-label.sev4 { color: var(--muted); }
+  .pd-time { font-size: 10.5px; color: var(--muted); }
+  .pd-title { font-size: 13px; margin-bottom: 3px; }
+  .pd-meta { font-size: 11px; color: var(--muted); }
+
+  /* ---- End screens ---- */
+  .end-panel { text-align: center; }
+  .end-panel .big { font-size: 46px; font-weight: bold; margin: 10px 0; }
+  .end-panel.win .big { color: var(--green); text-shadow: 0 0 16px rgba(34,217,122,0.5); }
+  .end-panel.lose .big { color: var(--red); text-shadow: 0 0 16px rgba(255,77,77,0.5); }
+
+  .leaderboard { margin-top: 20px; text-align: left; }
+  .leaderboard h3 { color: var(--amber); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  .lb-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: #0d1420;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 13px;
+  }
+  .lb-row .rank { color: var(--amber); font-weight: bold; margin-right: 10px; }
+  .lb-row.you { border: 1px solid var(--green); }
+  .lb-empty { color: var(--muted); font-size: 12px; padding: 8px 0; }
+
+  .name-input-row { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .name-input-row input {
+    font-family: var(--mono);
+    background: #0d1420;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 6px;
+    outline: none;
+    width: 220px;
+  }
+  .footer-note { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Persistence ----------
+  const LB_KEY = "defuse_the_deploy_leaderboard_v1";
+  function getLeaderboard() {
+    try { return JSON.parse(localStorage.getItem(LB_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function saveLeaderboard(list) {
+    localStorage.setItem(LB_KEY, JSON.stringify(list));
+  }
+  function submitScore(name, score) {
+    const list = getLeaderboard();
+    list.push({ name: name || "anon", score, date: new Date().toISOString().slice(0,10) });
+    list.sort((a, b) => b.score - a.score);
+    const top = list.slice(0, 3);
+    saveLeaderboard(top);
+    return top;
+  }
+
+  // ---------- Game constants ----------
+  const TOTAL_TIME = 210; // seconds
+  const BASE_STRIKE_PENALTY = 10; // seconds removed on wrong answer, scales with round
+  const MODULES_TO_CLEAR = 8;
+
+  // ---------- Environment ----------
+  // Two layers. The DEPLOYMENT (tier + region) is fixed for the whole game — you don't
+  // switch clusters mid-incident. CONDITIONS (severity + shift) re-roll every round, same as
+  // a real incident's severity gets reassessed and shifts change as time passes. Early rounds
+  // force the simplest condition (SEV1, business hours) so only the deployment axis matters;
+  // later rounds roll conditions freely, so the runbook cross-reference genuinely gets harder
+  // as the game goes on instead of being the same fixed lookup complexity every round.
+  function makeDeployment() {
+    const isProd = Math.random() < 0.6;
+    const region = pick(["us-east-1", "eu-west-1", "ap-southeast-1"]);
+    return { tier: isProd ? "prod" : "staging", isProd, region };
+  }
+
+  function makeConditions(round) {
+    const rollFreely = round >= 3;
+    const sev = rollFreely ? pick(["SEV1", "SEV2"]) : "SEV1";
+    const afterHours = rollFreely ? Math.random() < 0.5 : false;
+    return {
+      sev,
+      isSev1: sev === "SEV1",
+      afterHours,
+      shift: afterHours ? "after-hours" : "business hours"
+    };
+  }
+
+  function makeEnvironment(round) {
+    return { ...makeDeployment(), ...makeConditions(round || 0) };
+  }
+
+  // ---------- Content banks ----------
+
+  const SERVICES = ["auth-svc", "billing-svc", "checkout-api", "notify-worker", "search-gw", "inventory-svc", "session-cache", "ledger-svc"];
+
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+  function pad2(n) { return n.toString().padStart(2, "0"); }
+  function fakeTs(offsetSec) {
+    const base = 14 * 3600 + 22 * 60 + 6; // 14:22:06 baseline
+    const t = base + offsetSec;
+    const h = Math.floor(t / 3600) % 24, m = Math.floor(t / 60) % 60, s = t % 60;
+    return `${pad2(h)}:${pad2(m)}:${pad2(s)}.${randInt(100,999)}`;
+  }
+  function reqId() {
+    return "req-" + Math.random().toString(16).slice(2, 10);
+  }
+  function initialsAvatar(name) {
+    const colors = ["#ff6b6b", "#4ecdc4", "#ffd93d", "#6b8cff", "#b48cff", "#22d97a"];
+    const idx = name.charCodeAt(0) % colors.length;
+    return { initials: name.slice(0, 2).toUpperCase(), color: colors[idx] };
+  }
+
+  // difficulty scaling by round index (0-based)
+  function difficultyFactor(round) {
+    return round / Math.max(1, MODULES_TO_CLEAR - 1); // 0 -> 1
+  }
+
+  // --- Module 1: Log triage — KTANE-style Severity Cipher. Every ERROR line carries a code
+  // like "E7". The RUNBOOK (side panel) tells you which remainder (code number mod 3) is the
+  // real incident this game, keyed off your Bomb ID's digit-sum parity. No line is labeled as
+  // the root cause in English — you compute the target remainder and scan codes for a match. ---
+  const ERROR_CAUSES = [
+    `connection pool exhausted (0/50 available) after migration to r6g.large`,
+    `OOMKilled — heap ceiling reached at 98% (limit 2Gi)`,
+    `TLS handshake failed — certificate expired 2026-07-04T00:00:00Z`,
+    `circular dependency detected in helm chart values, deploy aborted`,
+    `deadlock detected on table 'orders', rolling back transaction`,
+    `upstream timeout after 30000ms, circuit breaker opened`,
+  ];
+  const CIPHER_STACKS = [
+    `at HikariPool.getConnection(HikariPool.java:186)`,
+    `at java.lang.OutOfMemoryError: Java heap space`,
+    `at SSLEngineImpl.checkTaskThrown(SSLEngineImpl.java:527)`,
+    `at ChartRenderer.resolveValues(chart_renderer.go:118)`,
+    `at PostgresDriver.execute(driver.go:301)`,
+    `at CircuitBreaker.trip(circuit_breaker.go:64)`,
+  ];
+  // Alerting migration is only partly rolled out: us-east-1 still runs the legacy pager
+  // (codes like LEGACY-4), everywhere else is on the new one (codes like V2-4). Old-format
+  // alerts from a region that's already migrated are known-stale duplicates from the cutover
+  // and get auto-suppressed in reality — same idea here. Second axis: after-hours, the new
+  // pager fails over to the legacy system regardless of region, since the on-call skeleton
+  // crew only has the old runbook memorized — so trust LEGACY for everyone after-hours.
+  function buildLogTriage(round, env) {
+    const diff = difficultyFactor(round);
+    // early rounds: region alone decides the format. Round 3+: the shift axis kicks in too,
+    // so the runbook cross-reference genuinely gets harder as the game goes on rather than
+    // being the same 2-fact lookup from round 1.
+    const crossShift = round >= 3;
+    const wantPrefix = (crossShift && env.afterHours) ? "LEGACY" : (env.region === "us-east-1" ? "LEGACY" : "V2");
+    const otherPrefix = wantPrefix === "LEGACY" ? "V2" : "LEGACY";
+    const errCount = diff < 0.3 ? 3 : diff < 0.6 ? 4 : 5;
+
+    const usedCodes = new Set();
+    const targetNum = randInt(1, 9);
+    const targetCode = `${wantPrefix}-${targetNum}`;
+    usedCodes.add(targetCode);
+
+    // every distractor gets the OTHER prefix — never the live one — so exactly one line
+    // ever carries the region's live format. Two same-format codes would make the format
+    // check alone insufficient to find the answer, defeating the point of the module.
+    const distractors = [];
+    while (distractors.length < errCount - 1) {
+      const code = `${otherPrefix}-${randInt(1, 9)}`;
+      if (usedCodes.has(code)) continue;
+      usedCodes.add(code);
+      distractors.push(code);
+    }
+
+    const errorLines = shuffle([targetCode, ...distractors]).map((code, i) => ({
+      svc: pick(SERVICES),
+      code,
+      isTarget: code === targetCode,
+      text: ERROR_CAUSES[i % ERROR_CAUSES.length],
+      stack: CIPHER_STACKS[i % CIPHER_STACKS.length],
+      tag: "error"
+    }));
+
+    const noisePool = [
+      { text: `healthcheck ok (latency 12ms)`, tag: "info" },
+      { text: `retrying request (attempt 2/5)`, tag: "warn" },
+      { text: `scaled replicas 3 -> 4`, tag: "info" },
+      { text: `cache miss ratio above baseline (12%)`, tag: "warn" },
+      { text: `config reload completed`, tag: "info" },
+      { text: `graceful shutdown signal received, draining connections`, tag: "info" },
+      { text: `slow query detected (340ms) on index scan`, tag: "warn" },
+      { text: `rate limiter engaged for client 10.2.4.19`, tag: "warn" },
+      { text: `readiness probe succeeded after 2 retries`, tag: "info" },
+      { text: `background job queue depth: 14`, tag: "info" },
+    ];
+    const noiseCount = diff < 0.4 ? 2 : diff < 0.75 ? 3 : 4;
+    const noise = shuffle(noisePool).slice(0, noiseCount).map(n => ({ ...n, svc: pick(SERVICES), code: null, isTarget: false }));
+
+    const allRaw = shuffle([...errorLines, ...noise]);
+    let t = 0;
+    const lines = allRaw.map(l => {
+      t += randInt(80, 900);
+      return {
+        ...l,
+        ts: fakeTs(t),
+        rid: reqId(),
+        showStack: l.tag === "error" && diff > 0.3 && !!l.stack
+      };
+    });
+
+    return {
+      type: "log",
+      label: "Module: Log Triage",
+      prompt: crossShift
+        ? `Check the Alerting Runbook panel for which code format is live given your region AND shift, then click the matching <b>[ERROR]</b> line — the other format is stale duplicates from the migration.`
+        : `Check the Alerting Runbook panel for which code format is live in your region, then click the matching <b>[ERROR]</b> line — the other format is stale duplicates from the migration.`,
+      lines
+    };
+  }
+
+  // --- Module 2: Wire cutting. Real operational rule: canaries are an intentionally
+  // limited-blast-radius rollout, so incident response never kills one in PROD unless it's
+  // the only option — you cut the worst non-canary instead. In staging there's no blast
+  // radius to protect, so you always just cut the worst offender, canary or not. ---
+  const WIRE_COLORS = [
+    { name: "red", hex: "#ff4d4d" },
+    { name: "amber", hex: "#ffb84d" },
+    { name: "green", hex: "#22d97a" },
+    { name: "blue", hex: "#6b8cff" },
+    { name: "purple", hex: "#b48cff" },
+  ];
+  // Runbook crosses TWO facts now: environment tier AND incident severity. Prod+SEV1 (worst
+  // case) is maximally conservative — never touch a canary. Prod+SEV2 allows cutting a canary
+  // if it's genuinely the worst offender, since a lower-severity incident doesn't justify
+  // protecting the canary at the cost of leaving the real problem running. Staging ignores
+  // severity entirely — there's no blast radius to protect either way.
+  function buildWireCut(round, env) {
+    const diff = difficultyFactor(round);
+    const count = round < 3 ? randInt(4, 5) : 5;
+    const colors = shuffle(WIRE_COLORS).slice(0, count);
+    const wires = colors.map(c => ({
+      color: c,
+      service: pick(SERVICES),
+      errorRate: randInt(1, 40),
+      canary: Math.random() < 0.35
+    }));
+
+    // Conditions (severity) are forced to the simplest case (SEV1) for the first 3 rounds by
+    // makeConditions, so early on this collapses to "prod always protects canaries" — the
+    // severity cross only starts actually mattering once conditions roll freely at round 3+.
+    const crossSeverity = round >= 3;
+    const protectCanary = env.isProd && env.isSev1;
+    let correctIndex;
+    if (protectCanary) {
+      const nonCanary = wires.map((w, i) => ({ w, i })).filter(x => !x.w.canary);
+      const pool = nonCanary.length ? nonCanary : wires.map((w, i) => ({ w, i })); // all-canary edge case: no safe option, cut the worst anyway
+      correctIndex = pool.reduce((best, x) => x.w.errorRate > wires[best].errorRate ? x.i : best, pool[0].i);
+    } else {
+      correctIndex = wires.reduce((best, w, i) => w.errorRate > wires[best].errorRate ? i : best, 0);
+    }
+
+    return {
+      type: "wire",
+      label: "Module: Pipeline Cut",
+      prompt: crossSeverity
+        ? `Check the Wire Runbook panel for the cutting rule that applies to your environment AND current severity, then cut the wire it points to.`
+        : `Check the Wire Runbook panel for the cutting rule that applies to your environment, then cut the wire it points to.`,
+      wires,
+      correctIndex
+    };
+  }
+
+  // --- Module 3: Console command — the service comes from a context banner (Slack/PagerDuty
+  // reference), not spelled out plainly in the instruction sentence. Runbook adds a second
+  // fact you must apply yourself: prod requires appending a confirmation flag to any command
+  // that changes live state (rollback/restart/scale/apply); read-only commands (logs) never
+  // need it, and staging never needs it either. Forgetting the flag in prod is the trap. ---
+  function buildConsole(round, env) {
+    const diff = difficultyFactor(round);
+    const svc = pick(SERVICES);
+    const contexts = [
+      `<b>#incident-war-room:</b> "confirmed it's <code>${svc}</code>, rollout v2.4.1 is the culprit — 500s spiking since the deploy."`,
+      `<b>PagerDuty SEV1:</b> service <code>${svc}</code> — 0/3 pods ready, deployment not progressing.`,
+      `<b>Grafana alert:</b> request volume for <code>${svc}</code> exceeded current replica capacity 4 minutes ago.`,
+      `<b>#incident-war-room:</b> "logs for <code>${svc}</code> would help right now, need to see what's happening live."`,
+    ];
+    const mutating = env.isProd; // whether a confirmation flag is required per the runbook
+    const easyScenarios = [
+      {
+        action: "rollback",
+        prompt: `Per the message above: roll back the affected service to its previous stable revision.`,
+        base: `kubectl rollout undo deployment/${svc}`,
+        changesState: true,
+        contextIdx: 0
+      },
+      {
+        action: "restart",
+        prompt: `Per the alert above: force a restart of the affected deployment.`,
+        base: `kubectl rollout restart deployment/${svc}`,
+        changesState: true,
+        contextIdx: 1
+      },
+      {
+        action: "scale",
+        prompt: `Per the alert above: scale the affected deployment to 8 replicas immediately.`,
+        base: `kubectl scale deployment/${svc} --replicas=8`,
+        changesState: true,
+        contextIdx: 2
+      },
+      {
+        action: "tail-logs",
+        prompt: `Per the message above: tail live logs for the affected service's pods.`,
+        base: `kubectl logs -f deployment/${svc}`,
+        baseAlt: `kubectl logs -f deploy/${svc}`,
+        changesState: false,
+        contextIdx: 3
+      }
+    ];
+    const hardScenarios = [
+      {
+        action: "tf-apply",
+        prompt: `Per the message above: terraform plan shows drift only in that service's module. Re-apply targeting just that module.`,
+        base: `terraform apply -target=module.${svc}`,
+        changesState: true,
+        contextIdx: 0
+      },
+      {
+        action: "rollback-revision",
+        prompt: `Per the alert above: roll that deployment back to the specific revision <b>numbered 3</b> in its rollout history (not just "previous").`,
+        base: `kubectl rollout undo deployment/${svc} --to-revision=3`,
+        changesState: true,
+        contextIdx: 1
+      },
+      {
+        action: "tail-logs-scoped",
+        prompt: `Per the alert above: pull the last <b>50</b> log lines for that service's container named <code>app</code> in namespace <code>prod</code>.`,
+        base: `kubectl logs deployment/${svc} -c app -n prod --tail=50`,
+        baseAlt: `kubectl logs deploy/${svc} -c app -n prod --tail=50`,
+        changesState: false,
+        contextIdx: 2
+      },
+      {
+        action: "tail-logs",
+        prompt: `Per the message above: tail live logs for that service's pods to confirm the fix worked.`,
+        base: `kubectl logs -f deployment/${svc}`,
+        baseAlt: `kubectl logs -f deploy/${svc}`,
+        changesState: false,
+        contextIdx: 3
+      }
+    ];
+    // hard scenarios become progressively more likely with each round instead of unlocking
+    // all at once at the difficulty midpoint — round 0 never sees them, round 7 mostly does.
+    const hardChance = Math.max(0, (round - 1) / 6);
+    const s = Math.random() < hardChance ? pick(hardScenarios) : pick(easyScenarios);
+    const needsFlag = mutating && s.changesState;
+    const answers = [s.base, s.baseAlt].filter(Boolean).map(a => needsFlag ? `${a} --confirm` : a);
+
+    return {
+      type: "console",
+      label: "Module: Command Console",
+      context: contexts[s.contextIdx],
+      prompt: `${s.prompt} Check the Command Runbook for the template for this action, then check whether your environment requires a confirmation flag.`,
+      action: s.action,
+      answers
+    };
+  }
+
+  // --- Module 4: Status code lookup. Second axis: code 409 means something more severe on
+  // a payments-tier service (checkout-api, billing-svc, ledger-svc) than elsewhere — a
+  // duplicate-charge risk instead of an ordinary version conflict. You have to check the
+  // service's tier against the Runbook, not just the raw code, for that one ambiguous case. ---
+  const PAYMENTS_TIER = ["checkout-api", "billing-svc", "ledger-svc"];
+  function buildLookup(round) {
+    const diff = difficultyFactor(round);
+    const table = [
+      { code: 429, meaning: "Rate limited" },
+      { code: 503, meaning: "Service unavailable" },
+      { code: 401, meaning: "Unauthorized" },
+      { code: 409, meaning: "Conflict / version mismatch" },
+      { code: 504, meaning: "Gateway timeout" },
+      { code: 422, meaning: "Unprocessable entity" },
+      { code: 451, meaning: "Blocked for legal/compliance reasons" },
+      { code: 507, meaning: "Insufficient storage" },
+    ];
+    // chance of the tier-sensitive 409 case climbs steadily each round instead of unlocking
+    // at a fixed threshold — round 0-1 never see it, round 7 sees it more often than not.
+    const ambiguousChance = Math.max(0, (round - 1) / 8);
+    const useAmbiguousCode = Math.random() < ambiguousChance;
+    const target = useAmbiguousCode ? table.find(r => r.code === 409) : pick(table);
+    const svc = useAmbiguousCode
+      ? (Math.random() < 0.5 ? pick(PAYMENTS_TIER) : pick(SERVICES.filter(s => !PAYMENTS_TIER.includes(s))))
+      : pick(SERVICES);
+    const isPaymentsTier = PAYMENTS_TIER.includes(svc);
+    const correctMeaning = (target.code === 409 && isPaymentsTier)
+      ? "Duplicate transaction — reject and alert"
+      : target.meaning;
+
+    const method = pick(["GET", "POST", "PUT", "DELETE"]);
+    const path = pick(["/v1/orders", "/v1/positions", "/v1/session", "/v1/quotes", "/v1/settle"]);
+    const accessLine = `${fakeTs(randInt(0,300))} ${svc} "${method} ${path} HTTP/1.1" ${target.code} ${randInt(80,4200)}b ${randInt(4,900)}ms`;
+    const wrongMeanings = shuffle(table.filter(r => r.code !== target.code).map(r => r.meaning)).slice(0, 2);
+    const distractorPool = [...wrongMeanings, target.code === 409 ? (isPaymentsTier ? "Conflict / version mismatch" : "Duplicate transaction — reject and alert") : null].filter(Boolean);
+    const options = shuffle([correctMeaning, ...distractorPool.slice(0, 3)]);
+
+    return {
+      type: "lookup",
+      label: "Module: Status Lookup",
+      context: `<b>Access log:</b> <code>${escapeHtml(accessLine)}</code>`,
+      prompt: `Read the status code and service out of the access log line above. Check the Status Lookup runbook — one code means something different on payments-tier services.`,
+      options,
+      correct: correctMeaning
+    };
+  }
+
+  // --- Module 5: Slack incident thread — the target message is identified by cross-referencing
+  // a detail from an earlier message (who said what), not by being the only "fix-looking" text ---
+  // Second axis: an on-call rotation (shown inside the module). Two people post "found it"
+  // style messages — only the one who's actually on this week's rotation is the real answer.
+  // The off-rotation poster is a well-meaning distraction, exactly the kind of thing that
+  // happens in a real incident channel when someone jumps in without checking the schedule.
+  // Rounds 0-2: a single, unambiguous "found it" message — no rotation trap yet. Round 3+:
+  // a second, off-rotation person also claims the fix, and you have to check the rotation
+  // list to tell which report actually counts — progressive unlock, not flat every round.
+  function buildSlackThread(round) {
+    const diff = difficultyFactor(round);
+    const withDecoy = round >= 3;
+    const svc = pick(SERVICES);
+    const people = shuffle(["dana", "raj", "wei", "priya", "sam", "noor"]);
+    const [onCall, offCall, p3, p4, p5] = people;
+    const rotation = [onCall, p3, p4].sort(); // 3 names on rotation, alphabetized for calm scanning
+
+    const fixVariants = [
+      `config map still points at the old connection string, redeploy picked up stale env`,
+      `the autoscaler got capped at max=3 replicas from last week's cost-cutting change`,
+      `feature flag new_pricing_engine got flipped on for 100% instead of 5% canary`,
+      `upstream cert on the load balancer expired at midnight UTC`,
+    ];
+    const [realFix, decoyFix] = shuffle(fixVariants).slice(0, 2);
+
+    const realMsg = { name: onCall, text: `found it — ${realFix}. pushing the fix now.`, isTarget: true };
+    const decoyMsg = { name: offCall, text: `found it — ${decoyFix}. pushing the fix now.`, isTarget: false };
+
+    const noiseMsgs = [
+      `anyone else seeing this or just us?`,
+      `paging the on-call now just in case`,
+      `dashboards are lighting up red across the board 😬`,
+      `customers are already tweeting about it lol`,
+      `I can jump on a call if useful`,
+      `same error on my end, checking the runbook`,
+      `is this related to the deploy from 20 min ago?`,
+      `status page updated to "investigating"`,
+      `on it`,
+      `looking now`,
+    ];
+    const msgCount = diff < 0.4 ? 2 : diff < 0.75 ? 3 : 4;
+    const noise = shuffle(noiseMsgs).slice(0, msgCount).map(text => ({
+      name: pick(people), text, isTarget: false
+    }));
+
+    const combined = shuffle(withDecoy ? [...noise, realMsg, decoyMsg] : [...noise, realMsg]);
+
+    let t = 0;
+    const messages = combined.map(m => {
+      t += randInt(20, 90);
+      return { ...m, time: `${Math.floor(t/60)}:${pad2(t%60)}` };
+    });
+
+    return {
+      type: "slack",
+      label: "Module: Incident Channel",
+      prompt: withDecoy
+        ? `Two people claim to have found the fix for <code>#incident-${svc}</code>. Check the on-call rotation below and click the message from whoever is <b>actually on this week's rotation</b> — the other "found it" is from someone off-rotation.`
+        : `Read <code>#incident-${svc}</code> and click the message that reports the actual fix.`,
+      channel: `incident-${svc}`,
+      rotation,
+      withDecoy,
+      messages
+    };
+  }
+
+  // --- Module 6: Grafana graph reading — answer a question about a rendered chart ---
+  // Round-gated variant unlocks instead of a single difficulty-threshold split: rounds 0-2
+  // are always the single-series deploy-timing check; the two-series origin comparison opens
+  // up at round 3; the threshold-judgment variant (read a number, compare to a runbook table)
+  // only becomes possible at round 6+, when you're expected to juggle the most at once.
+  function buildGrafanaRead(round, env) {
+    const diff = difficultyFactor(round);
+    const svc = pick(SERVICES);
+    const metricLabel = pick(["p99 latency (ms)", "error rate (%)", "CPU throttling (%)", "queue depth"]);
+    const twoSeriesUnlocked = round >= 3;
+    const seriesNames = (twoSeriesUnlocked && Math.random() < 0.5) ? [svc, pick(SERVICES.filter(s => s !== svc))] : [svc];
+    const points = 20;
+    const spikeAt = randInt(10, 16);
+
+    // for the two-service variant, force the spikes far enough apart (>= 5 of 20 buckets)
+    // that "which started first" is actually visually readable on the rendered chart rather
+    // than a 1-2 point difference lost in noise.
+    const spikeAtSecond = seriesNames.length === 2
+      ? (spikeAt <= 12 ? spikeAt + randInt(5, 7) : spikeAt - randInt(5, 7))
+      : null;
+
+    const seriesData = seriesNames.map((name, si) => {
+      let v = randInt(20, 40);
+      const data = [];
+      const thisSpikeAt = si === 0 ? spikeAt : spikeAtSecond;
+      for (let i = 0; i < points; i++) {
+        if (i === Math.max(1, Math.min(points - 2, thisSpikeAt))) v = v * randInt(3, 5);
+        else if (i > thisSpikeAt) v = v * (0.95 + Math.random() * 0.1);
+        else v += randInt(-3, 3);
+        v = Math.max(5, v);
+        data.push(Math.round(v));
+      }
+      return { name, color: si === 0 ? "#ff4d4d" : "#6b8cff", data, spikeAt: Math.max(1, Math.min(points - 2, thisSpikeAt)) };
+    });
+
+    // Runbook thresholds are per metric AND environment — prod is stricter than staging.
+    // The third question variant asks you to read the actual peak value and cross-check it
+    // against the correct threshold row yourself, rather than trusting the graph's drama.
+    const THRESHOLDS = {
+      "p99 latency (ms)": { prod: 300, staging: 800 },
+      "error rate (%)": { prod: 2, staging: 8 },
+      "CPU throttling (%)": { prod: 15, staging: 40 },
+      "queue depth": { prod: 50, staging: 200 }
+    };
+
+    let question, options, correct, context;
+    const thresholdUnlocked = round >= 6;
+    const variant = seriesNames.length === 2
+      ? "origin"
+      : (thresholdUnlocked && Math.random() < 0.5 ? "threshold" : "deploy");
+
+    if (variant === "threshold" && seriesNames.length === 1) {
+      const peakVal = Math.max(...seriesData[0].data);
+      const threshold = THRESHOLDS[metricLabel][env.isProd ? "prod" : "staging"];
+      const isRealIncident = peakVal > threshold;
+      correct = isRealIncident ? "Real incident — above threshold" : "Within normal noise — below threshold";
+      options = shuffle(["Real incident — above threshold", "Within normal noise — below threshold"]);
+      context = `<b>Peak reading:</b> <code>${svc}</code> hit <code>${peakVal}</code> on <code>${metricLabel}</code> this window.`;
+      question = `Check the Alerting Thresholds runbook for <b>${metricLabel}</b> in your environment. Is the peak reading above a real incident, or within normal noise for ${env.tier}?`;
+    } else if (seriesNames.length === 1) {
+      // ask which time-bucket the spike started, cross-referenced against a deploy timestamp
+      const bucketLabels = seriesData[0].data.map((_, i) => `t-${(points - i) * 5}m`);
+      correct = bucketLabels[seriesData[0].spikeAt];
+      const wrongIdx = shuffle(seriesData[0].data.map((_, i) => i).filter(i => Math.abs(i - seriesData[0].spikeAt) > 2)).slice(0, 3);
+      options = shuffle([correct, ...wrongIdx.map(i => bucketLabels[i])]);
+      context = `<b>Deploy log:</b> <code>${svc}</code> v2.4.1 shipped at <code>${bucketLabels[seriesData[0].spikeAt]}</code>.`;
+      question = `Does the spike in <b>${metricLabel}</b> for <code>${svc}</code> line up with the deploy above? Click the time bucket where the spike actually begins.`;
+    } else {
+      correct = seriesData[0].spikeAt <= seriesData[1].spikeAt ? seriesNames[0] : seriesNames[1];
+      // ticket names a service at random — sometimes the true origin, sometimes not — so the
+      // graph itself has to be read rather than inferred from "whichever isn't mentioned"
+      const reported = pick(seriesNames);
+      options = shuffle(seriesNames.slice());
+      context = `<b>Incident ticket:</b> customers first reported issues with <code>${reported}</code> — but customer reports can lag the real origin.`;
+      question = `Two services are graphed for <b>${metricLabel}</b>. Based on the graph itself (not the ticket), which one's spike actually started <b>first</b> — the likely true origin?`;
+    }
+
+    return {
+      type: "grafana",
+      label: "Module: Metrics Read",
+      context,
+      prompt: question,
+      metricLabel,
+      series: seriesData,
+      options,
+      correct
+    };
+  }
+
+  // --- Module 7: PagerDuty triage — cross-reference alerts against a mini on-call roster;
+  // the rule depends on WHO owns the service, which you have to look up, not just sort by severity ---
+  // Runbook crosses ownership (who you're covering for) with shift: business hours trusts
+  // an ack and leaves it alone; after-hours, acks can go stale with a thin on-call team, so
+  // you escalate the lowest severity number among your services regardless of ack state.
+  // Ownership always filters the alerts down first. Conditions (shift) are forced to
+  // business-hours for the first 3 rounds by makeConditions, so the "skip acked alerts" rule
+  // is all that applies early on — the after-hours escalation twist only shows up once shift
+  // starts rolling freely at round 3+, same progressive-unlock pattern as the other modules.
+  function buildPagerDuty(round, env) {
+    const diff = difficultyFactor(round);
+    const sevPool = [1, 2, 3, 4];
+    const count = round < 3 ? 4 : 5;
+    const people = shuffle(["dana", "raj", "wei", "priya", "sam", "noor"]);
+    const svcPool = shuffle(SERVICES).slice(0, count);
+    const roster = svcPool.map((svc, i) => ({ service: svc, owner: people[i % people.length] }));
+
+    const alerts = svcPool.map((svc) => ({
+      sev: pick(sevPool),
+      service: svc,
+      title: pick([
+        "Elevated 5xx rate", "Pod crash loop detected", "Latency SLO breach",
+        "Disk usage above 90%", "Certificate expiring soon", "Queue backlog growing",
+        "Memory pressure warning", "Failed health checks"
+      ]),
+      ackBy: pick(["unacked", "unacked", "acked by @oncall-raj"]),
+      minsAgo: randInt(1, 45)
+    }));
+
+    const onCallPerson = pick(people.slice(0, Math.min(people.length, count)));
+    const ownedServices = roster.filter(r => r.owner === onCallPerson).map(r => r.service);
+
+    let correctIndex, pool;
+    if (env.afterHours) {
+      const candidates = alerts.map((a, i) => ({ a, i })).filter(x => ownedServices.includes(x.a.service));
+      pool = candidates.length ? candidates : alerts.map((a, i) => ({ a, i }));
+      pool.sort((x, y) => x.a.sev - y.a.sev);
+      correctIndex = pool[0].i;
+    } else {
+      const candidates = alerts.map((a, i) => ({ a, i })).filter(x => ownedServices.includes(x.a.service) && x.a.ackBy === "unacked");
+      pool = candidates.length ? candidates : alerts.map((a, i) => ({ a, i })).filter(x => ownedServices.includes(x.a.service));
+      if (!pool.length) pool = alerts.map((a, i) => ({ a, i }));
+      pool.sort((x, y) => x.a.sev - y.a.sev);
+      correctIndex = pool[0].i;
+    }
+
+    return {
+      type: "pagerduty",
+      label: "Module: PagerDuty Triage",
+      roster,
+      prompt: `You're covering for <b>${onCallPerson}</b> this shift. Check the roster below for their services, then check the Escalation Runbook for the rule that applies to your shift.`,
+      alerts,
+      correctIndex
+    };
+  }
+
+  const MODULE_BUILDERS = [buildLogTriage, buildWireCut, buildConsole, buildLookup, buildSlackThread, buildGrafanaRead, buildPagerDuty];
+
+  // ---------- State ----------
+  let state = null;
+  let tickHandle = null;
+
+  function newGameState() {
+    const deployment = makeDeployment();
+    return {
+      screen: "start",
+      timeLeft: TOTAL_TIME,
+      mistakes: 0,
+      solved: 0,
+      round: 0,
+      banked: 0,
+      target: MODULES_TO_CLEAR,
+      current: null,
+      feedback: "",
+      feedbackType: "",
+      deployment,
+      env: { ...deployment, ...makeConditions(0) }
+    };
+  }
+  state = newGameState();
+
+  function render() {
+    const app = document.getElementById("app");
+    app.classList.toggle("with-runbook", state.screen === "playing");
+    if (state.screen === "start") app.innerHTML = renderStart();
+    else if (state.screen === "starting") app.innerHTML = renderStarting();
+    else if (state.screen === "playing") app.innerHTML = renderPlaying();
+    else if (state.screen === "won") app.innerHTML = renderWon();
+    else if (state.screen === "lost") app.innerHTML = renderLost();
+    attachHandlers();
+    if (state.screen === "playing" && state.current && state.current.type === "grafana") {
+      const canvas = document.getElementById("graf-read-canvas");
+      if (canvas) drawGrafanaReadChart(canvas, state.current.series);
+    }
+  }
+
+  function renderStart() {
+    return `
+      <h1>&gt; DEFUSE_THE_DEPLOY</h1>
+      <div class="subtitle">an incident-response bomb defusal for devops engineers</div>
+      <div class="panel start-panel">
+        <p>Prod is on fire. You have <b>${fmtTime(TOTAL_TIME)}</b> to clear <b>${MODULES_TO_CLEAR}</b> incident modules before the deploy explodes.</p>
+        <p>Modules escalate as you go — more noise, tighter rules, less room for error. There's no strike limit — every wrong answer just costs you real time, and the clock is the only thing that can end it.</p>
+        <div class="module-chips">
+          <span class="module-chip">Log Triage</span>
+          <span class="module-chip">Pipeline Cut</span>
+          <span class="module-chip">Command Console</span>
+          <span class="module-chip">Status Lookup</span>
+          <span class="module-chip">Incident Channel</span>
+          <span class="module-chip">Metrics Read</span>
+          <span class="module-chip">PagerDuty Triage</span>
+        </div>
+        <button id="start-btn">Start Incident</button>
+        <div>
+          <button id="lb-btn" class="secondary" style="margin-top:10px;">View Leaderboard</button>
+          <button id="howto-btn" class="secondary" style="margin-top:10px;">How to Play</button>
+        </div>
+      </div>
+      <div id="howto-panel" class="panel howto-panel hidden">${renderHowTo()}</div>
+      ${renderLeaderboardBlock(null)}
+    `;
+  }
+
+  function renderHowTo() {
+    return `
+      <h3>How to Play</h3>
+      <p class="howto-intro">Every module hides a real answer behind data you have to read yourself — nothing is spelled out in plain English. Two things stay constant across the whole run and are worth checking before every module:</p>
+      <ul class="howto-list">
+        <li><b>Your environment</b> (shown at the top once the incident starts) is either <span class="hl-prod">prod</span> or <span class="hl-staging">staging</span>, plus a region. Several modules' rules depend on which one you've got.</li>
+        <li><b>The Runbook</b> (side panel during play) is a fixed reference table — same every game. It never tells you which row applies to you; you match your environment to the right row yourself.</li>
+      </ul>
+
+      <div class="howto-module">
+        <div class="howto-module-title">Scoring</div>
+        <p>Each module you clear banks points immediately, scaling up as rounds get harder — you keep them even if the clock runs out later. A wrong answer costs real time instead of a life, so there's no hard limit on mistakes, but each one eats into what you have left. Clearing all ${MODULES_TO_CLEAR} adds a time-remaining bonus, plus a bonus for making no mistakes at all.</p>
+      </div>
+    `;
+  }
+
+  function renderStarting() {
+    return `
+      <h1>&gt; DEFUSE_THE_DEPLOY</h1>
+      <div class="panel start-panel loading">
+        <svg width="72" height="72" viewBox="0 0 200 200">
+          <polyline id="back" points="0,100 50,100 65,60 85,140 100,100 200,100" />
+          <polyline id="front" points="0,100 50,100 65,60 85,140 100,100 200,100" />
+        </svg>
+        <p style="margin-top:4px;">Spinning up incident<span class="dots"><span>.</span><span>.</span><span>.</span></span></p>
+      </div>
+    `;
+  }
+
+  function fmtTime(s) {
+    const m = Math.floor(s / 60).toString().padStart(2, "0");
+    const sec = Math.floor(s % 60).toString().padStart(2, "0");
+    return `${m}:${sec}`;
+  }
+
+  function renderPlaying() {
+    const timerClass = state.timeLeft <= 20 ? "crit" : state.timeLeft <= 60 ? "warn" : "";
+    const roundDots = Array.from({ length: state.target })
+      .map((_, i) => `<div class="round-dot ${i < state.solved ? "done" : i === state.solved ? "current" : ""}"></div>`).join("");
+
+    return `
+      <h1>&gt; DEFUSE_THE_DEPLOY</h1>
+      <div class="bomb-id-bar">ENVIRONMENT <span class="id-value ${state.env.isProd ? "env-prod" : "env-staging"}">${state.env.tier}</span> <span class="key-tag">${state.env.region}</span> <span class="key-tag">${state.env.sev}</span> <span class="key-tag">${state.env.shift}</span></div>
+      <div class="play-layout">
+        <div class="panel">
+          <div class="hud">
+            <div class="timer ${timerClass}">${fmtTime(state.timeLeft)}</div>
+            <div class="stat">SCORE: <b>${state.banked}</b> pts</div>
+            <div class="stat">MODULES CLEARED: <b>${state.solved}/${state.target}</b></div>
+          </div>
+          <div class="round-track">${roundDots}</div>
+          ${renderModule(state.current)}
+          <div class="feedback ${state.feedbackType}">${state.feedback}</div>
+        </div>
+        ${renderRunbook()}
+      </div>
+    `;
+  }
+
+  // only the section relevant to the CURRENT module is shown — but every table is shown
+  // cold, with no row highlighted. You already know your environment from the HUD above;
+  // matching it to the right row (and now, the right CELL — most tables cross two facts)
+  // is the puzzle, not something we do for you.
+  function renderRunbook() {
+    const m = state.current;
+    if (m && m.type === "wire") return renderWireRunbook();
+    if (m && m.type === "log") return renderCipherRunbook();
+    if (m && m.type === "console") return renderConsoleRunbook();
+    if (m && m.type === "lookup") return renderLookupRunbook();
+    if (m && m.type === "slack") return renderRosterRunbook();
+    if (m && m.type === "grafana") return renderThresholdRunbook();
+    if (m && m.type === "pagerduty") return renderEscalationRunbook();
+    return `<div class="runbook-panel"><div class="runbook-section"><h3>Runbook</h3><p>No reference needed for this module — use what's on screen.</p></div></div>`;
+  }
+
+  function renderWireRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Wire Runbook</h3>
+          <p>Canaries are a deliberately limited blast radius. How aggressively you're allowed to touch one depends on environment AND current severity — check both above, then find the matching cell.</p>
+          <table class="runbook-table">
+            <tr><th>Environment</th><th>SEV1</th><th>SEV2</th></tr>
+            <tr>
+              <td>prod</td>
+              <td>never cut a canary — cut highest err% NON-canary wire</td>
+              <td>cut highest err% wire, canary or not</td>
+            </tr>
+            <tr>
+              <td>staging</td>
+              <td>cut highest err% wire, canary or not</td>
+              <td>cut highest err% wire, canary or not</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderCipherRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Alerting Runbook</h3>
+          <p>Every [ERROR] line is tagged with a code like <code>LEGACY-5</code> or <code>V2-5</code>. Only the word before the dash matters — ignore the number. Find your region and shift below to see which word is currently live; codes with the other word are stale duplicates from the migration and should be ignored.</p>
+          <table class="runbook-table">
+            <tr><th>Region</th><th>Business hours</th><th>After-hours</th></tr>
+            <tr>
+              <td>us-east-1</td>
+              <td>trust <code>LEGACY</code></td>
+              <td>trust <code>LEGACY</code></td>
+            </tr>
+            <tr>
+              <td>eu-west-1</td>
+              <td>trust <code>V2</code></td>
+              <td>trust <code>LEGACY</code></td>
+            </tr>
+            <tr>
+              <td>ap-southeast-1</td>
+              <td>trust <code>V2</code></td>
+              <td>trust <code>LEGACY</code></td>
+            </tr>
+          </table>
+          <p style="margin-top:8px;">After-hours, the new pager fails over to the old one everywhere — so every region trusts <code>LEGACY</code> once it's after-hours, regardless of what business hours would say.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderConsoleRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Command Runbook</h3>
+          <p>Find the action the prompt describes below, copy its template, and substitute in the real service name for <code>&lt;service&gt;</code>.</p>
+          <table class="runbook-table">
+            <tr><th>Action</th><th>Command template</th></tr>
+            <tr><td>Roll back to previous revision</td><td><code>kubectl rollout undo deployment/&lt;service&gt;</code></td></tr>
+            <tr><td>Roll back to a specific revision N</td><td><code>kubectl rollout undo deployment/&lt;service&gt; --to-revision=N</code></td></tr>
+            <tr><td>Force restart</td><td><code>kubectl rollout restart deployment/&lt;service&gt;</code></td></tr>
+            <tr><td>Scale to N replicas</td><td><code>kubectl scale deployment/&lt;service&gt; --replicas=N</code></td></tr>
+            <tr><td>Tail live logs</td><td><code>kubectl logs -f deployment/&lt;service&gt;</code></td></tr>
+            <tr><td>Tail last N lines, scoped to a container/namespace</td><td><code>kubectl logs deployment/&lt;service&gt; -c &lt;container&gt; -n &lt;namespace&gt; --tail=N</code></td></tr>
+            <tr><td>Re-apply a drifted terraform module</td><td><code>terraform apply -target=module.&lt;service&gt;</code></td></tr>
+          </table>
+          <p style="margin-top:8px;">Then check environment: any command that changes live state (rollback, restart, scale, apply) needs <code>--confirm</code> appended in one environment but not the other. Read-only commands (tailing logs) never need it.</p>
+          <table class="runbook-table">
+            <tr><th>Environment</th><th>State-changing command</th><th>Read-only command</th></tr>
+            <tr>
+              <td>prod</td><td>append <code>--confirm</code></td><td>no flag needed</td>
+            </tr>
+            <tr>
+              <td>staging</td><td>no flag needed</td><td>no flag needed</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderLookupRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Status Lookup</h3>
+          <p>Read the status code AND service out of the access log line — one code means something different on payments-tier services (<code>${PAYMENTS_TIER.join(", ")}</code>).</p>
+          <table class="runbook-table">
+            <tr><th>Code</th><th>Meaning (most services)</th><th>Meaning (payments tier)</th></tr>
+            <tr><td>429</td><td colspan="2">Rate limited</td></tr>
+            <tr><td>503</td><td colspan="2">Service unavailable</td></tr>
+            <tr><td>401</td><td colspan="2">Unauthorized</td></tr>
+            <tr><td>409</td><td>Conflict / version mismatch</td><td>Duplicate transaction — reject and alert</td></tr>
+            <tr><td>504</td><td colspan="2">Gateway timeout</td></tr>
+            <tr><td>422</td><td colspan="2">Unprocessable entity</td></tr>
+            <tr><td>451</td><td colspan="2">Blocked for legal/compliance reasons</td></tr>
+            <tr><td>507</td><td colspan="2">Insufficient storage</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderRosterRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>On-Call Rotation</h3>
+          <p>A message naming someone to investigate only counts if that person is actually on this week's rotation — off-rotation people can still post in the channel, but their "found it" doesn't carry the same weight. The rotation is shown inside the module itself this round; cross-check every name mentioned against it before trusting a report.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderThresholdRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Alerting Thresholds</h3>
+          <p>Whether a graphed spike counts as a real incident (vs normal noise) depends on environment — prod has a tighter threshold than staging. Check your environment above against the metric being graphed.</p>
+          <table class="runbook-table">
+            <tr><th>Metric</th><th>prod threshold</th><th>staging threshold</th></tr>
+            <tr><td>p99 latency (ms)</td><td>&gt; 300ms</td><td>&gt; 800ms</td></tr>
+            <tr><td>error rate (%)</td><td>&gt; 2%</td><td>&gt; 8%</td></tr>
+            <tr><td>CPU throttling (%)</td><td>&gt; 15%</td><td>&gt; 40%</td></tr>
+            <tr><td>queue depth</td><td>&gt; 50</td><td>&gt; 200</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderEscalationRunbook() {
+    return `
+      <div class="runbook-panel">
+        <div class="runbook-section">
+          <h3>Escalation Runbook</h3>
+          <p>Whether an already-acked alert should be re-escalated depends on shift. During business hours, an ack is trusted — leave it alone. After-hours, on-call is thin and acks can go stale, so escalate the lowest-severity-number alert among your owned services regardless of ack state.</p>
+          <table class="runbook-table">
+            <tr><th>Shift</th><th>Rule</th></tr>
+            <tr><td>business hours</td><td>only act on UNACKED alerts among your services</td></tr>
+            <tr><td>after-hours</td><td>act on lowest severity number among your services, ack state doesn't matter</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderModule(m) {
+    if (m.type === "log") {
+      return `
+        <div class="module-label">${m.label}</div>
+        <div class="prompt">${m.prompt}</div>
+        <div class="log-console">
+          <div class="log-console-bar"><span>tail -f /var/log/incident.log</span><span>live</span></div>
+          ${m.lines.map((l, i) => `
+            <div class="log-line" data-idx="${i}">
+              <span class="ts">${l.ts}</span><span class="svc">${l.svc}</span><span class="tag-${l.tag}">[${l.tag.toUpperCase()}${l.code ? " " + l.code : ""}]</span> ${escapeHtml(l.text)} <span class="rid">${l.rid}</span>
+              ${l.showStack ? `<span class="stack">${escapeHtml(l.stack)}</span>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    if (m.type === "wire") {
+      return `
+        <div class="module-label">${m.label}</div>
+        <div class="prompt">${m.prompt}</div>
+        <div class="wire-list">
+          ${m.wires.map((w, i) => `
+            <div class="wire" data-idx="${i}">
+              <span class="wire-pos">${i + 1}</span>
+              <div class="swatch" style="background:${w.color.hex}"></div>
+              <span>${w.service}${w.canary ? ` <span class="canary-tag">CANARY</span>` : ""}</span>
+              <span class="meta">err ${w.errorRate}%</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    if (m.type === "console") {
+      return `
+        <div class="module-label">${m.label}</div>
+        ${m.context ? `<div class="context-banner">${m.context}</div>` : ""}
+        <div class="prompt">${m.prompt}</div>
+        <div class="terminal">
+          <div class="terminal-bar"><span class="c1"></span><span class="c2"></span><span class="c3"></span></div>
+          <div class="terminal-body">
+            <div class="prompt-line"><span class="user">oncall@bastion</span>:<span class="path">~/prod</span>$ <i>waiting for command...</i></div>
+            <div class="console-input-row">
+              <span class="caret">$</span>
+              <input id="console-in" class="console-input" placeholder="type the command..." autocomplete="off" spellcheck="false" />
+            </div>
+          </div>
+        </div>
+        <div class="console-row">
+          <button id="console-submit">Execute</button>
+        </div>
+      `;
+    }
+    if (m.type === "lookup") {
+      return `
+        <div class="module-label">${m.label}</div>
+        ${m.context ? `<div class="context-banner">${m.context}</div>` : ""}
+        <div class="prompt">${m.prompt}</div>
+        <div class="grid-choices">
+          ${m.options.map((o, i) => `<button class="choice" data-idx="${i}">${o}</button>`).join("")}
+        </div>
+      `;
+    }
+    if (m.type === "slack") {
+      return `
+        <div class="module-label">${m.label}</div>
+        <div class="prompt">${m.prompt}</div>
+        ${m.withDecoy ? `<div class="context-banner"><b>On-call rotation this week:</b> ${m.rotation.map(escapeHtml).join(", ")}</div>` : ""}
+        <div class="slack-panel">
+          <div class="slack-header"><span class="hash">#</span>${m.channel}</div>
+          ${m.messages.map((msg, i) => {
+            const av = initialsAvatar(msg.name);
+            return `
+            <div class="slack-msg" data-idx="${i}">
+              <div class="slack-avatar" style="background:${av.color}">${av.initials}</div>
+              <div class="slack-body">
+                <div class="slack-meta"><span class="name">${msg.name}</span><span class="time">${msg.time}</span></div>
+                <div class="slack-text">${msg.text}</div>
+              </div>
+            </div>
+          `;
+          }).join("")}
+        </div>
+      `;
+    }
+    if (m.type === "grafana") {
+      return `
+        <div class="module-label">${m.label}</div>
+        ${m.context ? `<div class="context-banner">${m.context}</div>` : ""}
+        <div class="prompt">${m.prompt}</div>
+        <div class="graf-panel">
+          <div class="graf-bar"><span><span class="dot" style="background:#ff4d4d"></span>${escapeHtml(m.metricLabel)}</span><span>last 100m</span></div>
+          <canvas id="graf-read-canvas" height="180"></canvas>
+          <div class="graf-legend">
+            ${m.series.map(s => `<span><span class="sw" style="background:${s.color}"></span>${s.name}</span>`).join("")}
+          </div>
+        </div>
+        <div class="graf-hint">Read each colored line against the time axis below to find where it actually kinks upward.</div>
+        <div class="grid-choices">
+          ${m.options.map((o, i) => `<button class="choice" data-idx="${i}">${escapeHtml(o)}</button>`).join("")}
+        </div>
+      `;
+    }
+    if (m.type === "pagerduty") {
+      return `
+        <div class="module-label">${m.label}</div>
+        <div class="prompt">${m.prompt}</div>
+        <div class="roster-panel">
+          <div class="roster-title">On-call roster</div>
+          ${m.roster.map(r => `<span class="roster-row"><b>${escapeHtml(r.owner)}</b> &middot; ${escapeHtml(r.service)}</span>`).join("")}
+        </div>
+        <div class="pd-list">
+          ${m.alerts.map((a, i) => `
+            <div class="pd-card" data-idx="${i}">
+              <div class="pd-sev sev${a.sev}"></div>
+              <div class="pd-content">
+                <div class="pd-top">
+                  <span class="pd-sev-label sev${a.sev}">SEV${a.sev}</span>
+                  <span class="pd-time">${a.minsAgo}m ago</span>
+                </div>
+                <div class="pd-title">${escapeHtml(a.title)} — ${a.service}</div>
+                <div class="pd-meta">${a.ackBy}</div>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+    return "";
+  }
+
+  function drawGrafanaReadChart(canvas, series) {
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const topPad = 22; // room for spike-time text labels above the plot
+    const bottomPad = 32; // room for the x-axis tick labels below the plot
+    const plotH = h - topPad - bottomPad;
+    const points = series[0].data.length;
+    const bucketMinutes = (i) => (points - i) * 5; // matches buildGrafanaRead's own labeling
+
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = topPad + (i * plotH / 4);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    // x-axis tick labels every ~5 buckets so you can read off an actual time value,
+    // not just compare marker positions by eye
+    ctx.fillStyle = "#4a5568";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "center";
+    const tickStep = Math.max(1, Math.round(points / 4));
+    for (let i = 0; i < points; i += tickStep) {
+      const x = (i / (points - 1)) * w;
+      ctx.fillText(`t-${bucketMinutes(i)}m`, Math.min(Math.max(x, 16), w - 16), h - bottomPad + 22);
+    }
+
+    const maxV = Math.max(...series.flatMap(s => s.data)) * 1.15;
+    series.forEach(s => {
+      const grad = ctx.createLinearGradient(0, topPad, 0, h - bottomPad);
+      grad.addColorStop(0, s.color + "33");
+      grad.addColorStop(1, s.color + "00");
+
+      ctx.beginPath();
+      s.data.forEach((val, i) => {
+        const x = (i / (s.data.length - 1)) * w;
+        const y = topPad + plotH - (val / maxV) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.lineTo(w, h - bottomPad); ctx.lineTo(0, h - bottomPad); ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = 2;
+      s.data.forEach((val, i) => {
+        const x = (i / (s.data.length - 1)) * w;
+        const y = topPad + plotH - (val / maxV) * plotH;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      const lastX = w, lastY = topPad + plotH - (s.data[s.data.length - 1] / maxV) * plotH;
+      ctx.beginPath();
+      ctx.fillStyle = s.color;
+      ctx.arc(lastX - 2, lastY, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      // no marker line or label at the spike point — finding where each curve actually
+      // kinks upward, and reading that position against the x-axis yourself, is the puzzle.
+    });
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  function renderLeaderboardBlock(highlightScore) {
+    const list = getLeaderboard();
+    if (!list.length) {
+      return `<div class="panel leaderboard"><h3>Top 3 Incident Commanders</h3><div class="lb-empty">No scores yet. Be the first to defuse it.</div></div>`;
+    }
+    return `
+      <div class="panel leaderboard">
+        <h3>Top 3 Incident Commanders</h3>
+        ${list.map((e, i) => `
+          <div class="lb-row ${highlightScore != null && e.score === highlightScore ? "you" : ""}">
+            <span><span class="rank">#${i + 1}</span>${escapeHtml(e.name)}</span>
+            <span>${e.score} pts &middot; ${e.date}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function renderWon() {
+    const score = computeScore();
+    return `
+      <h1>&gt; DEFUSE_THE_DEPLOY</h1>
+      <div class="panel end-panel win">
+        <div>INCIDENT RESOLVED</div>
+        <div class="big">${score} pts</div>
+        <div class="stat">Time remaining: ${fmtTime(state.timeLeft)}</div>
+        <div class="name-input-row">
+          <input id="name-in" placeholder="your handle" maxlength="20" />
+          <button id="submit-score-btn">Submit Score</button>
+        </div>
+      </div>
+      <div id="lb-slot"></div>
+      <div style="text-align:center;"><button class="secondary" id="restart-btn" style="margin-top:16px;">Play Again</button></div>
+    `;
+  }
+
+  function renderLost() {
+    const score = computeScore();
+    return `
+      <h1>&gt; DEFUSE_THE_DEPLOY</h1>
+      <div class="panel end-panel lose">
+        <div>OUTAGE — DEPLOY EXPLODED</div>
+        <div class="big">${score} pts</div>
+        <div class="stat">Modules cleared: ${state.solved}/${state.target}</div>
+        <div class="stat" style="margin-top:6px;">Ran out of time — every module you cleared before the clock hit zero still counts.</div>
+        <div class="name-input-row">
+          <input id="name-in" placeholder="your handle" maxlength="20" />
+          <button id="submit-score-btn">Submit Score</button>
+        </div>
+      </div>
+      <div id="lb-slot"></div>
+      <div style="text-align:center;"><button class="secondary" id="restart-btn" style="margin-top:16px;">Try Again</button></div>
+    `;
+  }
+
+  // points for clearing a module at a given round — later, harder rounds are worth more
+  function moduleValueForRound(round) {
+    return Math.round(100 + difficultyFactor(round) * 80); // 100 -> 180
+  }
+
+  function computeScore() {
+    // banked points already reflect every module solved, win or not.
+    // full-clear bonuses (time remaining, clean run) only apply if you actually finished.
+    let score = state.banked;
+    if (state.solved >= state.target) {
+      score += Math.round(state.timeLeft * 2);
+      if (state.mistakes === 0) score += 150;
+    }
+    return Math.max(0, score);
+  }
+
+  function strikePenaltyForRound(round) {
+    return Math.round(BASE_STRIKE_PENALTY + difficultyFactor(round) * 16); // 10 -> 26
+  }
+
+  // ---------- Game flow ----------
+  function startGame() {
+    state = newGameState();
+    state.screen = "starting";
+    render();
+    setTimeout(() => {
+      state.screen = "playing";
+      state.current = pick(MODULE_BUILDERS)(state.round, state.env);
+      render();
+      startTimer();
+    }, 700);
+  }
+
+  function startTimer() {
+    clearInterval(tickHandle);
+    tickHandle = setInterval(() => {
+      state.timeLeft -= 1;
+      if (state.timeLeft <= 0) {
+        state.timeLeft = 0;
+        endGame(false);
+        return;
+      }
+      // only re-render the timer bits to avoid wiping input focus
+      const timerEl = document.querySelector(".timer");
+      if (timerEl) {
+        timerEl.textContent = fmtTime(state.timeLeft);
+        timerEl.className = "timer " + (state.timeLeft <= 20 ? "crit" : state.timeLeft <= 60 ? "warn" : "");
+      }
+    }, 1000);
+  }
+
+  function endGame(won) {
+    clearInterval(tickHandle);
+    state.screen = won ? "won" : "lost";
+    render();
+  }
+
+  function nextModuleOrWin() {
+    state.solved += 1;
+    state.round += 1;
+    if (state.solved >= state.target) {
+      endGame(true);
+      return;
+    }
+    state.env = { ...state.deployment, ...makeConditions(state.round) };
+    state.current = pick(MODULE_BUILDERS)(state.round, state.env);
+    state.feedback = "";
+    state.feedbackType = "";
+    render();
+  }
+
+  function handleCorrect() {
+    const value = moduleValueForRound(state.round);
+    state.banked += value;
+    state.feedback = `✔ correct — module cleared, +${value} pts banked.`;
+    state.feedbackType = "ok";
+    setTimeout(nextModuleOrWin, 500);
+    render();
+  }
+
+  function handleWrong() {
+    const penalty = strikePenaltyForRound(state.round);
+    state.mistakes += 1;
+    state.timeLeft = Math.max(0, state.timeLeft - penalty);
+    state.feedback = `✘ wrong — lost ${penalty}s`;
+    state.feedbackType = "bad";
+    if (state.timeLeft <= 0) {
+      setTimeout(() => endGame(false), 400);
+    }
+    render();
+  }
+
+  function checkAnswer(isCorrect) {
+    if (isCorrect) handleCorrect();
+    else handleWrong();
+  }
+
+  // ---------- Event wiring ----------
+  function attachHandlers() {
+    const startBtn = document.getElementById("start-btn");
+    if (startBtn) startBtn.onclick = startGame;
+
+    const lbBtn = document.getElementById("lb-btn");
+    if (lbBtn) lbBtn.onclick = () => {
+      const panel = document.querySelectorAll(".panel.leaderboard")[0];
+      if (panel) panel.scrollIntoView({ behavior: "smooth" });
+    };
+
+    const howtoBtn = document.getElementById("howto-btn");
+    const howtoPanel = document.getElementById("howto-panel");
+    if (howtoBtn && howtoPanel) {
+      howtoBtn.onclick = () => {
+        const isHidden = howtoPanel.classList.contains("hidden");
+        howtoPanel.classList.toggle("hidden");
+        howtoBtn.textContent = isHidden ? "Hide Instructions" : "How to Play";
+        if (isHidden) howtoPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      };
+    }
+
+    const restartBtn = document.getElementById("restart-btn");
+    if (restartBtn) restartBtn.onclick = startGame;
+
+    const submitScoreBtn = document.getElementById("submit-score-btn");
+    if (submitScoreBtn) submitScoreBtn.onclick = () => {
+      const nameIn = document.getElementById("name-in");
+      const name = (nameIn.value || "anon").trim().slice(0, 20);
+      const score = computeScore();
+      submitScore(name, score);
+      submitScoreBtn.disabled = true;
+      submitScoreBtn.textContent = "Submitted";
+      document.getElementById("lb-slot").innerHTML = renderLeaderboardBlock(score);
+    };
+
+    if (state.screen !== "playing" || !state.current) return;
+    const m = state.current;
+
+    if (m.type === "log") {
+      document.querySelectorAll(".log-line").forEach(el => {
+        el.onclick = () => checkAnswer(m.lines[+el.dataset.idx].isTarget);
+      });
+    }
+    if (m.type === "wire") {
+      document.querySelectorAll(".wire").forEach(el => {
+        el.onclick = () => checkAnswer(+el.dataset.idx === m.correctIndex);
+      });
+    }
+    if (m.type === "console") {
+      const input = document.getElementById("console-in");
+      const submit = document.getElementById("console-submit");
+      const go = () => {
+        const val = input.value.trim().replace(/\s+/g, " ");
+        const ok = m.answers.some(a => a.trim().replace(/\s+/g, " ").toLowerCase() === val.toLowerCase());
+        checkAnswer(ok);
+      };
+      submit.onclick = go;
+      input.onkeydown = (e) => { if (e.key === "Enter") go(); };
+      input.focus();
+    }
+    if (m.type === "lookup") {
+      document.querySelectorAll(".choice").forEach(el => {
+        el.onclick = () => checkAnswer(m.options[+el.dataset.idx] === m.correct);
+      });
+    }
+    if (m.type === "slack") {
+      document.querySelectorAll(".slack-msg").forEach(el => {
+        el.onclick = () => checkAnswer(m.messages[+el.dataset.idx].isTarget);
+      });
+    }
+    if (m.type === "grafana") {
+      document.querySelectorAll(".grid-choices .choice").forEach(el => {
+        el.onclick = () => checkAnswer(m.options[+el.dataset.idx] === m.correct);
+      });
+    }
+    if (m.type === "pagerduty") {
+      document.querySelectorAll(".pd-card").forEach(el => {
+        el.onclick = () => checkAnswer(+el.dataset.idx === m.correctIndex);
+      });
+    }
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
